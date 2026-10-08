@@ -36,6 +36,7 @@ context-mode-guidance-*/
 # rule above guards, so un-ignore exactly this one path. It pins
 # CONTEXT_MODE_PLATFORM=copilot-cli so the server self-identifies as Copilot.
 !configs/copilot-cli/.mcp.json
+!configs/copilot-cli-on-demand/.mcp.json
 .claude-worktrees/
 .vibetree/
 .cw/

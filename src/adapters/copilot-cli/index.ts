@@ -45,7 +45,12 @@ import {
 const COPILOT_PLUGIN_ENV = "CONTEXT_MODE_COPILOT_PLUGIN";
 
 function isCopilotPluginRuntime(): boolean {
-  return process.env[COPILOT_PLUGIN_ENV] === "1";
+  return process.env[COPILOT_PLUGIN_ENV] === "1" || isCopilotOnDemandPlugin();
+}
+
+/** configs/copilot-cli-on-demand ships no hooks; the agent opts in via skills. */
+function isCopilotOnDemandPlugin(): boolean {
+  return process.env[COPILOT_PLUGIN_ENV] === "ondemand";
 }
 
 function copilotPluginHooksPath(pluginRoot: string): string {
@@ -314,6 +319,13 @@ export class CopilotCliAdapter extends CopilotBaseAdapter {
   }
 
   validateHooks(pluginRoot: string): DiagnosticResult[] {
+    if (isCopilotOnDemandPlugin()) {
+      return [{
+        check: "Hook configuration",
+        status: "pass",
+        message: "Copilot CLI on-demand plugin bundle: hooks intentionally absent",
+      }];
+    }
     const results: DiagnosticResult[] = [];
     const pluginRuntime = isCopilotPluginRuntime();
     const settingsPath = pluginRuntime ? copilotPluginHooksPath(pluginRoot) : this.getSettingsPath();
