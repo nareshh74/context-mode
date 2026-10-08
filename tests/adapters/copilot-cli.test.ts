@@ -1,9 +1,9 @@
 import "../setup-home";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { resolve, join } from "node:path";
-import { mkdirSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { CopilotCliAdapter, copilotCliMcpConfigPath } from "../../src/adapters/copilot-cli/index.js";
 import { HOOK_TYPES, HOOK_SCRIPTS, buildHookCommand } from "../../src/adapters/copilot-cli/hooks.js";
 
@@ -223,6 +223,14 @@ describe("CopilotCliAdapter", () => {
         });
       }
     });
+
+    it("reports hooks as intentionally absent for the on-demand plugin bundle", () => {
+      process.env.CONTEXT_MODE_COPILOT_PLUGIN = "ondemand";
+      expect(adapter.validateHooks(process.cwd())).toEqual([
+        expect.objectContaining({ status: "pass", message: expect.stringContaining("intentionally absent") }),
+      ]);
+      expect(adapter.checkPluginRegistration()).toMatchObject({ status: "pass" });
+    });
   });
 });
 
@@ -331,10 +339,19 @@ describe("configs/copilot-cli-on-demand — hookless Copilot CLI plugin bundle",
     expect(existsSync(resolve(OD, "hooks.json"))).toBe(false);
   });
 
-  it("shares the MCP config and routing skill with configs/copilot-cli", () => {
-    for (const f of [".mcp.json", "skills/context-mode/SKILL.md"]) {
-      expect(readFileSync(resolve(OD, f), "utf-8")).toBe(readFileSync(resolve(PLUGIN, f), "utf-8"));
-    }
+  it("marks its MCP server as the on-demand plugin so doctor skips hook checks", () => {
+    const mcp = JSON.parse(readFileSync(resolve(OD, ".mcp.json"), "utf-8"));
+    expect(mcp.mcpServers["context-mode"].env).toMatchObject({
+      CONTEXT_MODE_PLATFORM: "copilot-cli",
+      CONTEXT_MODE_COPILOT_PLUGIN: "ondemand",
+    });
+  });
+
+  it("ships a context-mode skill without the hook-only BLOCKED claims", () => {
+    const skill = readFileSync(resolve(OD, "skills", "context-mode", "SKILL.md"), "utf-8");
+    expect(skill).toContain("name: context-mode");
+    expect(skill).toMatch(/ctx_batch_execute/);
+    expect(skill).not.toMatch(/MANDATORY|BLOCKED/);
   });
 
   it("manifest declares both skills and bulk-research points at context-mode", () => {
@@ -343,5 +360,36 @@ describe("configs/copilot-cli-on-demand — hookless Copilot CLI plugin bundle",
     const skill = readFileSync(resolve(OD, "skills", "bulk-research", "SKILL.md"), "utf-8");
     expect(skill).toContain("name: bulk-research");
     expect(skill).toContain("`context-mode` skill");
+  });
+
+  it("ctx_report.py counts usage and survives malformed input", () => {
+    const python = ["python3", "python"].find((cmd) => {
+      try { execFileSync(cmd, ["--version"], { stdio: "ignore" }); return true; } catch { return false; }
+    });
+    if (!python) return;
+    const home = mkdtempSync(join(tmpdir(), "ctx-report-"));
+    const copilot = join(home, "copilot");
+    const now = new Date().toISOString();
+    mkdirSync(join(copilot, "session-state", "s1"), { recursive: true });
+    writeFileSync(join(copilot, "session-state", "s1", "events.jsonl"), [
+      JSON.stringify({ type: "tool.execution_start", timestamp: now, data: { toolName: "skill", arguments: { skill: "bulk-research" } } }),
+      JSON.stringify({ type: "tool.execution_start", timestamp: now, data: { toolName: "context-mode-ctx_execute", arguments: {} } }),
+      JSON.stringify({ type: "tool.execution_start", timestamp: now, data: null }),
+      '{"type":"tool.execution_start", truncated',
+    ].join("\n"));
+    mkdirSync(join(copilot, "context-mode", "sessions"), { recursive: true });
+    writeFileSync(join(copilot, "context-mode", "sessions", "stats-a.json"), JSON.stringify({ total_calls: 2, kept_out: 4000, tokens_saved: 1000 }));
+    writeFileSync(join(copilot, "context-mode", "sessions", "stats-b.json"), "{not json");
+    const hermes = join(home, "hermes");
+    mkdirSync(hermes, { recursive: true });
+    writeFileSync(join(hermes, "state.db"), "not a sqlite db");
+
+    const out = execFileSync(python, [resolve(OD, "skills", "bulk-research", "scripts", "ctx_report.py"), "1"], {
+      encoding: "utf-8",
+      env: { ...process.env, COPILOT_HOME: copilot, HERMES_HOME: hermes, HERMES_CONTEXT_MODE_DIR: join(home, "none"), CONTEXT_MODE_DATA_DIR: "" },
+    });
+    expect(out).toMatch(/copilot +sessions_using=1 skill_loads=1 ctx_calls=1 \| server_calls=2 bytes_returned=0 bytes_kept_out=4000 tokens_saved~1000/);
+    expect(out).toMatch(/hermes +sessions_using=0 skill_loads=0 ctx_calls=0/);
+    rmSync(home, { recursive: true, force: true });
   });
 });
