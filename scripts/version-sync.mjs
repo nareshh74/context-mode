@@ -42,6 +42,7 @@ export const TARGETS = [
   // the agy bundle above: without this it freezes at its pinned version on the
   // next bump (cf. the .cursor-plugin v1.0.111 drift the version-sync test guards).
   "configs/copilot-cli/.github/plugin/plugin.json",
+  "configs/copilot-cli-on-demand/.github/plugin/plugin.json",
 ];
 
 function syncManifests() {

@@ -323,3 +323,25 @@ describe("configs/copilot-cli — GitHub Copilot CLI plugin bundle", () => {
     }
   });
 });
+
+describe("configs/copilot-cli-on-demand — hookless Copilot CLI plugin bundle", () => {
+  const OD = resolve(REPO_ROOT, "configs", "copilot-cli-on-demand");
+
+  it("ships no hooks.json, so nothing is injected or redirected", () => {
+    expect(existsSync(resolve(OD, "hooks.json"))).toBe(false);
+  });
+
+  it("shares the MCP config and routing skill with configs/copilot-cli", () => {
+    for (const f of [".mcp.json", "skills/context-mode/SKILL.md"]) {
+      expect(readFileSync(resolve(OD, f), "utf-8")).toBe(readFileSync(resolve(PLUGIN, f), "utf-8"));
+    }
+  });
+
+  it("manifest declares both skills and bulk-research points at context-mode", () => {
+    const manifest = JSON.parse(readFileSync(resolve(OD, ".github", "plugin", "plugin.json"), "utf-8"));
+    expect(manifest.skills).toEqual(["./skills/context-mode", "./skills/bulk-research"]);
+    const skill = readFileSync(resolve(OD, "skills", "bulk-research", "SKILL.md"), "utf-8");
+    expect(skill).toContain("name: bulk-research");
+    expect(skill).toContain("`context-mode` skill");
+  });
+});

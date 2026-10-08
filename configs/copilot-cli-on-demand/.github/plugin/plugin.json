@@ -1,0 +1,16 @@
+{
+  "name": "context-mode-on-demand",
+  "description": "context-mode for GitHub Copilot CLI without hooks: the MCP server plus skills the agent loads only for bulk tool I/O.",
+  "version": "1.0.169",
+  "author": {
+    "name": "Mert Koseoğlu",
+    "url": "https://github.com/mksglu"
+  },
+  "homepage": "https://github.com/mksglu/context-mode#readme",
+  "repository": "https://github.com/mksglu/context-mode",
+  "license": "Elastic-2.0",
+  "skills": [
+    "./skills/context-mode",
+    "./skills/bulk-research"
+  ]
+}
